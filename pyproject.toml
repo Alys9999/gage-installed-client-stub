@@ -1,0 +1,15 @@
+[project]
+name = "gage-installed-client-stub"
+version = "0.1.0"
+description = "Stub HTTP service for GAGE installed-client workflows"
+requires-python = ">=3.10"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["stub_installed_client_service"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
