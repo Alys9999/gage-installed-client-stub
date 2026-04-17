@@ -168,6 +168,8 @@ def _build_codex_cli_result(
 
     with tempfile.TemporaryDirectory(prefix="gage-codex-proxy-") as temp_dir:
         output_path = str(Path(temp_dir) / "last_message.txt")
+        prompt_path = Path(temp_dir) / "prompt.txt"
+        prompt_path.write_text(prompt, encoding="utf-8")
         command = [
             codex_executable,
             "exec",
@@ -175,24 +177,26 @@ def _build_codex_cli_result(
             "--full-auto",
             "--output-last-message",
             output_path,
-            prompt,
         ]
         env = dict(os.environ)
         env.update({str(key): str(value) for key, value in request_env.items() if key})
-        completed = subprocess.run(
-            command,
-            cwd=host_cwd,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=timeout_sec,
-            check=False,
-        )
+        with prompt_path.open(encoding="utf-8") as prompt_file:
+            completed = subprocess.run(
+                command,
+                stdin=prompt_file,
+                cwd=host_cwd,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+                check=False,
+            )
         stdout = _read_optional_text(output_path) or (completed.stdout or "")
         stderr = completed.stderr or ""
         exit_code = int(completed.returncode)
         submission_patch_path = _resolve_submission_contract_patch_path(
             metadata=metadata,
+            payload=payload,
             cwd=host_cwd,
         )
         patch_content: str | None
@@ -208,7 +212,7 @@ def _build_codex_cli_result(
         if patch_content is None:
             patch_content = _extract_last_diff_block(stdout) or _extract_last_diff_block(stderr)
 
-    command_str = " ".join(_shell_quote(part) for part in command)
+    command_str = " ".join(_shell_quote(part) for part in command) + " < <prompt_file>"
     answer = stdout.strip()
     trace = [
         {
@@ -325,11 +329,14 @@ def _read_optional_text(path: str) -> str | None:
 def _resolve_submission_contract_patch_path(
     *,
     metadata: dict[str, Any],
+    payload: dict[str, Any],
     cwd: str | None,
 ) -> Path | None:
     if not cwd:
         return None
-    submission_contract = str(metadata.get("submission_contract") or "").strip()
+    submission_contract = str(
+        metadata.get("submission_contract") or payload.get("submission_contract") or ""
+    ).strip()
     if not submission_contract:
         return None
 

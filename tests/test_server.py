@@ -91,6 +91,48 @@ class BuildCodexCliResultTests(unittest.TestCase):
         self.assertEqual(result["patch_content"], "")
         self.assertEqual(result["answer"], "final answer")
 
+    def test_payload_submission_contract_is_supported_for_gage_workflow_requests(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            patch_text = "diff --git a/fix.go b/fix.go\n+fixed\n"
+            with open(f"{temp_dir}/submission.patch", "w", encoding="utf-8") as handle:
+                handle.write(patch_text)
+
+            completed = subprocess.CompletedProcess(
+                args=["codex", "exec"],
+                returncode=0,
+                stdout="stdout ignored when last message exists",
+                stderr="",
+            )
+
+            def read_optional_text(path: str) -> str:
+                if path.endswith("last_message.txt"):
+                    return "final answer"
+                with open(path, encoding="utf-8") as handle:
+                    return handle.read()
+
+            with patch("stub_installed_client_service.server.subprocess.run", return_value=completed):
+                with patch(
+                    "stub_installed_client_service.server._read_optional_text",
+                    side_effect=read_optional_text,
+                ):
+                    with patch(
+                        "stub_installed_client_service.server._collect_patch",
+                        side_effect=AssertionError("git diff fallback should not run"),
+                    ):
+                        result = _build_codex_cli_result(
+                            request={
+                                "instruction": "fix it",
+                                "cwd": temp_dir,
+                                "metadata": {"benchmark_kit_id": "swebench"},
+                                "payload": {"submission_contract": "submission.patch"},
+                            },
+                            environment={},
+                            codex_executable="codex",
+                        )
+
+        self.assertEqual(result["patch_content"], patch_text)
+        self.assertEqual(result["answer"], "final answer")
+
 
 if __name__ == "__main__":
     unittest.main()
